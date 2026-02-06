@@ -6,7 +6,7 @@ import seaborn as sns
 from datetime import datetime, timedelta
 
 # 1. CONFIGURAZIONE PAGINA
-st.set_page_config(page_title="Forecasting Strategico Pro", layout="wide")
+st.set_page_config(page_title="Forecasting Strategico Pro - DEMO", layout="wide")
 
 # STILE CSS PROFESSIONALE
 st.markdown("""
@@ -35,6 +35,7 @@ if 'trend_val' not in st.session_state: st.session_state.trend_val = 0.0
 if 'google_scale' not in st.session_state: st.session_state.google_scale = 1.0
 if 'meta_scale' not in st.session_state: st.session_state.meta_scale = 1.0
 if 'sat_val' not in st.session_state: st.session_state.sat_val = 0.85
+if 'is_demo_loaded' not in st.session_state: st.session_state.is_demo_loaded = False
 if 'last_uploaded_file' not in st.session_state: st.session_state.last_uploaded_file = None
 
 # --- FUNZIONI DI UTILITÀ ---
@@ -67,6 +68,104 @@ def clean_percentage(val):
     s = str(val).replace('%', '').strip()
     try: return float(s)
     except: return 0.0
+
+def generate_demo_data():
+    """Genera dati casuali ma realistici per la demo (2020-2026)."""
+    # Impostiamo date fisse dal 2020 al 2026
+    start_date = datetime(2020, 1, 1)
+    end_date = datetime(2026, 5, 31)
+    dates = pd.date_range(start=start_date, end=end_date, freq='W-MON')
+    
+    data = []
+    
+    # 1. Stagionalità Settimanale (Week 1-53) - Clonato dal CSV reale
+    # Notiamo: Q1 basso, Picco estivo (Week 26-28), Picco enorme Q4 (Black Friday Week 47-48)
+    seasonal_profile = {
+        1: 0.8, 2: 0.7, 3: 0.6, 4: 0.6, 5: 0.5, 6: 0.5, 7: 0.5, 8: 0.55, 9: 0.6, 10: 0.6,
+        11: 0.65, 12: 0.7, 13: 0.75, 14: 0.8, 15: 0.8, 16: 0.8, 17: 0.85, 18: 0.9, 19: 0.9, 20: 0.95,
+        21: 1.0, 22: 1.05, 23: 1.1, 24: 1.15, 25: 1.2, 26: 1.3, 27: 1.4, 28: 1.3, 29: 1.1, 30: 1.0,
+        31: 0.9, 32: 0.8, 33: 0.7, 34: 0.7, 35: 0.8, 36: 0.9, 37: 0.95, 38: 1.0, 39: 1.0, 40: 1.05,
+        41: 1.1, 42: 1.15, 43: 1.2, 44: 1.4, 45: 1.8, 46: 2.5, 47: 4.5, 48: 3.8, 49: 3.2, 50: 2.5,
+        51: 1.5, 52: 1.0, 53: 0.9
+    }
+
+    # 2. Trend Annuale Non-Lineare (Fattore moltiplicativo base)
+    yearly_trend = {
+        2020: 1.0,
+        2021: 1.4,  # Boom post-2020
+        2022: 1.3,  # Assestamento/Calo
+        2023: 1.5,  # Ripresa
+        2024: 1.7,  # Crescita solida
+        2025: 1.9,  # Crescita continua
+        2026: 2.1   # Proiezione
+    }
+
+    base_sales = 5000.0 # Valore base settimanale
+    
+    for d in dates:
+        year = d.year
+        week = d.isocalendar().week
+        
+        s_fact = seasonal_profile.get(week, 1.0)
+        y_fact = yearly_trend.get(year, 1.0)
+        
+        # Randomicità controllata
+        noise = np.random.uniform(0.9, 1.1)
+        
+        # Calcolo Vendite Totali
+        total_sales = base_sales * s_fact * y_fact * noise
+        
+        # Spesa Ads (Segue le vendite ma con efficienza variabile)
+        # Quando il fatturato esplode (Black Friday), il ROAS sale ma il CPM costa di più
+        marketing_pressure = 0.20 # 20% del fatturato va in ads di media
+        if s_fact > 2.0: marketing_pressure = 0.15 # Efficienza sale nei picchi
+        
+        total_spend = total_sales * marketing_pressure * np.random.uniform(0.95, 1.05)
+        
+        # Split Google/Meta (Google prende più brand search nei picchi)
+        google_share = 0.40
+        if s_fact > 1.5: google_share = 0.50
+        
+        g_cost = total_spend * google_share
+        m_cost = total_spend * (1 - google_share)
+        
+        # KPI Derivati
+        aov = 120.0 + np.random.uniform(-10, 10)
+        orders = int(total_sales / aov)
+        
+        # Resi (più alti dopo i picchi)
+        return_rate = 0.12
+        if week in [1, 2, 3, 4, 5]: return_rate = 0.25 # Gennaio resi alti
+        returns = - (total_sales * return_rate * np.random.uniform(0.8, 1.2))
+        
+        discounts = - (total_sales * 0.05) if s_fact < 2 else - (total_sales * 0.15) # Più sconti nei picchi
+        
+        # ROAS Simulato
+        roas_g = (total_sales * 0.6) / g_cost if g_cost > 0 else 0
+        roas_m = (total_sales * 0.5) / m_cost if m_cost > 0 else 0
+        
+        data.append({
+            'Year Week': f"{year}{week:02d}",
+            'Cost': g_cost,
+            'Amount Spent': m_cost,
+            'Total sales': total_sales,
+            'Returns': returns,
+            'Discounts': discounts,
+            'Average order value': aov,
+            'Orders': orders,
+            'Returning customer rate': f"{np.random.randint(12, 28)}%",
+            'Conversions Value': g_cost * roas_g,
+            'Website Purchases Conversion Value': m_cost * roas_m,
+            'Avg. CPC': 0.85,
+            'CPC (All)': 0.65,
+            'CPM (Cost per 1,000 Impressions)': 12.50,
+            'Impressions': int(m_cost / 12.50 * 1000),
+            'Frequency': 1.2,
+            'Items': int(orders * 1.5),
+            'Gross sales': total_sales - discounts
+        })
+        
+    return pd.DataFrame(data)
 
 # --- HEADER ---
 st.title("📈 Simulatore Business & Forecasting")
@@ -129,26 +228,20 @@ with st.sidebar.expander("1. Input Metriche", expanded=True):
         help="Frequenza media di riacquisto per i clienti che ritornano (es. 1.0 = comprano 1 volta in più)."
     )
 
-    # --- CALCOLI (BACKEND) ---
-    
+    # --- CALCOLI (BACKEND - INSERITO PER EVITARE NAME ERROR) ---
     # 1. AOV Netto
-    # Formula: (AOV * (1 - %Resi)) / (1 + %IVA)
     aov_post_tax_returns = (be_aov * (1 - be_returns/100)) / (1 + be_vat/100)
 
-    # 2. Profit per Order (Margine di Contribuzione I livello)
-    # Formula: (AOV Netto * %Margine) - Costi Spedizione
-    profit_per_order = (aov_post_tax_returns * (be_margin_prod/100)) - be_fulfillment
+    # 2. Profit per Order
+    profit_order = (aov_post_tax_returns * (be_margin_prod/100)) - be_fulfillment
 
-    # 3. Profit per Customer (LTV Marginale)
-    # Formula: Profitto Ordine + (Profitto Ordine * %Returning * Frequenza)
-    profit_per_customer = profit_per_order + (profit_per_order * (be_returning_perc/100) * be_repeat_rate)
+    # 3. Profit per Customer
+    profit_per_customer = profit_order + (profit_order * (be_returning_perc/100) * be_repeat_rate)
 
     # 4. Break Even CPA
-    # Logica: Posso spendere per acquisire un cliente fino all'intero profitto che quel cliente mi genererà.
     be_cpa = profit_per_customer
 
     # 5. Break Even ROAS
-    # Formula: AOV Lordo / Break Even CPA
     be_roas_val = be_aov / be_cpa if be_cpa > 0 else 99.9
 
 with st.sidebar.expander("2. Output Calcolati (Live)", expanded=True):
@@ -157,7 +250,7 @@ with st.sidebar.expander("2. Output Calcolati (Live)", expanded=True):
     st.markdown(f"**AOV (Netto)**: € {aov_post_tax_returns:.2f}")
     st.caption("Formula: `(AOV * (1-Resi)) / (1+IVA)`")
     
-    st.markdown(f"**Profitto/Ordine**: € {profit_per_order:.2f}")
+    st.markdown(f"**Profitto/Ordine**: € {profit_order:.2f}")
     st.caption("Formula: `(AOV Netto * Margine%) - Spedizioni`")
     
     st.markdown(f"**Profitto/Cliente**: € {profit_per_customer:.2f}")
@@ -180,14 +273,44 @@ with st.sidebar.expander("2. Output Calcolati (Live)", expanded=True):
 st.sidebar.divider()
 
 # --- SIDEBAR: CONTROLLI ---
-st.sidebar.header("🕹️ Pannello di Controllo")
-uploaded_file = st.sidebar.file_uploader("Carica il file META_GOOGLE_SHOPIFY.csv", type="csv")
+st.sidebar.header("🕹️ Dati & Pannello")
+demo_mode = st.sidebar.toggle("🚀 Usa Modalità DEMO (Dati Casuali)", value=False)
 
-if uploaded_file is not None:
+uploaded_file = None
+if not demo_mode:
+    uploaded_file = st.sidebar.file_uploader("Carica il file .csv", type="csv")
+
+# --- GUIDA FORMATO CSV ---
+with st.expander("📋 Guida: Come formattare il CSV per la versione completa"):
+    st.markdown("""
+    Per utilizzare la versione completa, il file CSV deve contenere le seguenti colonne:
+    | Colonna | Descrizione |
+    | :--- | :--- |
+    | `Year Week` | Data settimanale (es. 202501) |
+    | `Cost` | Spesa Google Ads |
+    | `Amount Spent` | Spesa Meta Ads |
+    | `Total sales` | Fatturato netto Shopify |
+    | `Returns` | Valore dei resi |
+    | `Orders` | Numero totale ordini |
+    """)
+
+# --- LOGICA CARICAMENTO E PULIZIA (UNIFICATA) ---
+df = None
+
+# 1. Recupero DataFrame (Demo o File)
+if demo_mode:
+    df = generate_demo_data()
+    st.success("✅ Dati DEMO generati (Pattern Non-Lineare)!")
+elif uploaded_file is not None:
     try:
-        # --- CARICAMENTO E PULIZIA ---
         df = pd.read_csv(uploaded_file, sep=None, engine='python')
         df = df.dropna(how='all')
+    except Exception as e:
+        st.error(f"Errore: {e}")
+
+# 2. Elaborazione Completa (Se df esiste)
+if df is not None:
+    try:
         df.columns = df.columns.str.strip()
 
         col_date = next((c for c in df.columns if 'Year Week' in c or 'Settimana' in c), None)
@@ -206,7 +329,6 @@ if uploaded_file is not None:
         col_g_imps = 'Impressions'
         col_m_freq = 'Frequency'
         
-        # Colonne aggiuntive per AI
         col_items = 'Items'
         col_ret_rate = 'Returning customer rate'
         col_discounts = 'Discounts'
@@ -218,6 +340,11 @@ if uploaded_file is not None:
         df['Data_Interna'] = df[col_date].apply(parse_iso_week)
         df = df.dropna(subset=['Data_Interna']).sort_values('Data_Interna')
         df['Periodo'] = df['Data_Interna'].apply(get_week_range_label_with_year)
+
+        # === CREAZIONE COLONNE GLOBALI PER TAB 4 ===
+        df['Year'] = df['Data_Interna'].dt.year
+        df['Week'] = df['Data_Interna'].dt.isocalendar().week
+        # ==========================================================
 
         money_cols = [col_google, col_meta, col_sales, col_returns, col_aov, 'Gross sales', col_discounts, 
                       col_g_val, col_m_val, col_g_cpc, col_m_cpc, col_m_cpm]
@@ -242,38 +369,40 @@ if uploaded_file is not None:
         df['CoS'] = (df['Spesa_Ads_Totale'] / df['Fatturato_Netto'].replace(0, np.nan)) * 100
         df['CoS'] = df['CoS'].fillna(0)
         
-        # Profitto Operativo Storico (Usa Profitto per Ordine)
+        # --- CALCOLO PROFITTO NETTO STIMATO NEL DF ---
         num_orders = df[col_orders] if col_orders in df.columns else (df['Fatturato_Netto'] / be_aov)
-        df['Profitto_Operativo'] = (num_orders * profit_per_order) - df['Spesa_Ads_Totale']
+        
+        # Profitto Operativo = (Numero Ordini * Profitto per Ordine) - Spesa Ads
+        # FIX: Uso la variabile corretta profit_order definita nella sidebar
+        df['Profitto_Operativo'] = (num_orders * profit_order) - df['Spesa_Ads_Totale']
 
         # Inizializzazione sicura ROAS
-        df['ROAS_Google'] = 0.0; df['ROAS_Meta'] = 0.0
+        df['ROAS_Google'] = 0.0
+        df['ROAS_Meta'] = 0.0
         if col_g_val in df.columns: df['ROAS_Google'] = df[col_g_val] / df[col_google].replace(0, np.nan).fillna(0)
         if col_m_val in df.columns: df['ROAS_Meta'] = df[col_m_val] / df[col_meta].replace(0, np.nan).fillna(0)
 
-        # --- PRE-CALCOLO METRICHE PER SIDEBAR ---
-        
-        # 1. Calcolo Saturazione Storica
-        df['Year'] = df['Data_Interna'].dt.year
+        # --- AUTO-CALCOLO ELASTICITÀ ---
         df_annual = df.groupby('Year').agg({'Spesa_Ads_Totale': 'sum', 'Fatturato_Netto': 'sum'}).sort_index()
         suggested_saturation = 0.85 
         if len(df_annual) >= 2:
-            d_spend = (df_annual.loc[df_annual.index[-1], 'Spesa_Ads_Totale'] - df_annual.loc[df_annual.index[-2], 'Spesa_Ads_Totale']) / df_annual.loc[df_annual.index[-2], 'Spesa_Ads_Totale']
-            d_rev = (df_annual.loc[df_annual.index[-1], 'Fatturato_Netto'] - df_annual.loc[df_annual.index[-2], 'Fatturato_Netto']) / df_annual.loc[df_annual.index[-2], 'Fatturato_Netto']
+            last_year = df_annual.index[-1]
+            prev_year = df_annual.index[-2]
+            d_spend = (df_annual.loc[last_year, 'Spesa_Ads_Totale'] - df_annual.loc[prev_year, 'Spesa_Ads_Totale']) / df_annual.loc[prev_year, 'Spesa_Ads_Totale']
+            d_rev = (df_annual.loc[last_year, 'Fatturato_Netto'] - df_annual.loc[prev_year, 'Fatturato_Netto']) / df_annual.loc[prev_year, 'Fatturato_Netto']
             if d_spend > 0.05:
-                suggested_saturation = np.clip(d_rev / d_spend, 0.60, 1.0)
+                raw_elasticity = d_rev / d_spend
+                suggested_saturation = np.clip(raw_elasticity, 0.60, 1.0)
 
-        # 2. Calcolo Trend Rolling YoY (Ultimi 12 mesi vs 12 mesi precedenti)
+        # --- CALCOLO TREND YoY ---
         last_date = df['Data_Interna'].max()
-        start_LTM = last_date - pd.Timedelta(weeks=52)
-        start_LTM_prev = start_LTM - pd.Timedelta(weeks=52)
-        
-        sales_LTM = df[(df['Data_Interna'] > start_LTM) & (df['Data_Interna'] <= last_date)]['Fatturato_Netto'].sum()
-        sales_LTM_prev = df[(df['Data_Interna'] > start_LTM_prev) & (df['Data_Interna'] <= start_LTM)]['Fatturato_Netto'].sum()
-        
-        growth_rate = (sales_LTM - sales_LTM_prev) / sales_LTM_prev if sales_LTM_prev > 0 else 0.0
+        start_last_year = last_date - pd.Timedelta(weeks=52)
+        start_prev_year = start_last_year - pd.Timedelta(weeks=52)
+        sales_ly = df[(df['Data_Interna'] > start_last_year) & (df['Data_Interna'] <= last_date)]['Fatturato_Netto'].sum()
+        sales_py = df[(df['Data_Interna'] > start_prev_year) & (df['Data_Interna'] <= start_last_year)]['Fatturato_Netto'].sum()
+        growth_rate = (sales_ly - sales_py) / sales_py if sales_py > 0 else 0.0
 
-        # 3. Calcolo Crescita Storica Annuale (Tabella)
+        # Storico Annuale
         historical_growth_data = []
         years_avail = sorted(df['Year'].unique(), reverse=True)
         for i in range(len(years_avail) - 1):
@@ -284,13 +413,15 @@ if uploaded_file is not None:
             g_y = (val_curr - val_prev) / val_prev if val_prev > 0 else 0
             historical_growth_data.append(f"📅 {curr_y} vs {prev_y}: **{g_y:+.1%}**")
 
-        # === 🚀 AUTO-SETTING AL PRIMO CARICAMENTO ===
-        if st.session_state.last_uploaded_file != uploaded_file.name:
+        # === 🚀 AUTO-SETTING AL PRIMO CARICAMENTO (O AVVIO DEMO) ===
+        current_source_name = "DEMO" if demo_mode else (uploaded_file.name if uploaded_file else None)
+        
+        if st.session_state.last_uploaded_file != current_source_name:
             st.session_state.trend_val = 0.0
             st.session_state.google_scale = 1.2
             st.session_state.meta_scale = 1.2
             st.session_state.sat_val = float(suggested_saturation)
-            st.session_state.last_uploaded_file = uploaded_file.name
+            st.session_state.last_uploaded_file = current_source_name
             st.rerun()
         # =============================================
 
@@ -314,33 +445,25 @@ if uploaded_file is not None:
 
         st.sidebar.divider()
 
-        # --- SIDEBAR: TREND & CRESCITA (AGGIORNATO) ---
+        # --- SIDEBAR: SLIDER E LEGENDE ---
         st.sidebar.subheader("🚀 Trend & Crescita")
         
-        # Spiegazione con dati reali
         with st.sidebar.expander("ℹ️ Come viene calcolato?"):
-            st.markdown(f"""
-            **Formula:** `(Fatturato Ultimi 12 Mesi - Fatturato 12 Mesi Precedenti) / Precedenti`
-            
-            **Esempio con i tuoi dati:**
-            * **Ultimi 12 Mesi:** € {sales_LTM:,.0f}
-            * **12 Mesi Prec.:** € {sales_LTM_prev:,.0f}
-            * **Calcolo:** `({sales_LTM:,.0f} - {sales_LTM_prev:,.0f}) / {sales_LTM_prev:,.0f}` = **{growth_rate:+.1%}**
-            
-            Questo trend (+{growth_rate*100:.1f}%) è la "velocità base" che il sistema usa per le proiezioni se lasci lo slider a 0.
-            """)
-            
+            st.markdown(f"**Formula:** `(Fatturato Ultimi 12 Mesi - Fatturato 12 Mesi Precedenti) / Precedenti`")
+            st.markdown(f"**Dato Rilevato:** `{growth_rate:+.1%}`")
             if historical_growth_data:
                 st.markdown("---")
-                st.markdown("**📜 Storico Crescita Annuale:**")
-                for hist_row in historical_growth_data[:4]: # Mostra ultimi 4 anni
-                    st.markdown(hist_row)
+                for hist_row in historical_growth_data[:4]: st.markdown(hist_row)
 
         st.sidebar.markdown(f"**Crescita Rilevata (YoY):** `{growth_rate:+.1%}`.")
         manual_trend = st.sidebar.slider("Aggiusta Trend Futuro", -0.5, 2.0, key="trend_val", help="Aggiunge o toglie punti percentuali al trend storico rilevato.")
 
         st.sidebar.divider()
         st.sidebar.subheader("Scenari Budget")
+        **Scala Budget:** Moltiplica la spesa storica media per questo fattore.
+        * **1.0**: Spesa standard (uguale agli anni passati).
+        * **2.0**: Simula cosa succede se raddoppi l'investimento.
+        """)        
         m_google = st.sidebar.slider("Scala Google Ads", 0.5, 5.0, key="google_scale")
         m_meta = st.sidebar.slider("Scala Meta Ads", 0.5, 5.0, key="meta_scale")
         
@@ -349,10 +472,11 @@ if uploaded_file is not None:
         sat_factor = st.sidebar.slider("Saturazione", 0.5, 1.0, key="sat_val")
         
         # Grafico Saturazione con Assi
-        x_sat = np.linspace(1, 4, 20); y_sat = x_sat ** sat_factor
+        x_sat = np.linspace(1, 4, 20)
+        y_sat = x_sat ** sat_factor
         fig_sat, ax_sat = plt.subplots(figsize=(4, 2))
-        ax_sat.plot(x_sat, x_sat, ls='--', color='gray', alpha=0.5, label='Ideale')
-        ax_sat.plot(x_sat, y_sat, color='#e74c3c', lw=2, label='Reale')
+        ax_sat.plot(x_sat, x_sat, linestyle='--', color='gray', alpha=0.5, label='Ideale')
+        ax_sat.plot(x_sat, y_sat, color='#e74c3c', linewidth=2, label=f'Reale')
         ax_sat.set_title("Curva Rendimenti", fontsize=9)
         ax_sat.set_xlabel("Moltiplicatore Spesa", fontsize=7)
         ax_sat.set_ylabel("Moltiplicatore Ricavi", fontsize=7)
@@ -371,7 +495,6 @@ if uploaded_file is not None:
         tot_ads = last_4['Spesa_Ads_Totale'].sum()
         mer = tot_sales / tot_ads if tot_ads > 0 else 0
         cos = (tot_ads / tot_sales * 100) if tot_sales > 0 else 0
-        avg_return_rate = last_4['Tasso_Resi'].mean()
         profit = last_4['Profitto_Operativo'].sum()
 
         c1, c2, c3, c4, c5 = st.columns(5)
@@ -387,6 +510,8 @@ if uploaded_file is not None:
             'Fatturato_Netto': 'mean', col_google: 'mean', col_meta: 'mean', col_orders: 'mean'
         }).reset_index()
 
+        avg_hist_sales = df['Fatturato_Netto'].mean()
+        
         future_dates = pd.date_range(start=last_date + pd.Timedelta(weeks=1), periods=int(mesi_prev*4.34), freq='W-MON')
 
         rows = []
@@ -395,12 +520,9 @@ if uploaded_file is not None:
             base = seasonal[seasonal['Week_Num'] == w]
             if base.empty: base = seasonal.mean().to_frame().T
             
-            # Trend applicato: (Vendite Ultimi 12 Mesi / Media Storica) * (1 + Slider Manuale)
-            # Usiamo growth_rate calcolato sopra come base inerziale
-            # Se growth_rate è +7%, e manual_trend è 0, il moltiplicatore sarà 1.078
+            # Trend applicato (Base storica + Slider)
             base_trend = (1 + growth_rate) * (1 + manual_trend)
             
-            # Applichiamo il trend alla media stagionale
             proj_sales_base = base['Fatturato_Netto'].values[0] * base_trend
             proj_google_base = base[col_google].values[0] * base_trend
             proj_meta_base = base[col_meta].values[0] * base_trend
@@ -441,7 +563,7 @@ if uploaded_file is not None:
         ORANGE_COLOR = '#e67e22'  
         
         with tabs[0]:
-            st.caption("Confronto Storico (Verde) vs Previsione (Arancione) basata sui tuoi Scenari.")
+            st.caption("Questo grafico confronta l'andamento storico del fatturato (Verde) con la proiezione futura (Arancione).")
             fig, ax1 = plt.subplots(figsize=(12, 6))
             ax1.plot(df['Data_Interna'], df['Fatturato_Netto'], color=GREEN_COLOR, label='Storico', linewidth=1)
             ax1.plot(df_prev['Data'], df_prev['Fatturato Previsto'], color=ORANGE_COLOR, linestyle='--', label='Previsione', linewidth=2)
@@ -455,12 +577,11 @@ if uploaded_file is not None:
             st.pyplot(fig)
 
         with tabs[1]:
-            st.caption("Dettaglio numerico delle previsioni (Mensile e Settimanale).")
+            st.caption("Tabelle dettagliate con i numeri mese per mese e settimana per settimana.")
             st.subheader("📅 Riepilogo Mensile")
             df_prev['Mese'] = df_prev['Data'].dt.strftime('%B %Y')
             df_monthly = df_prev.groupby('Mese', sort=False).agg({'Spesa Totale': 'sum', 'Fatturato Previsto': 'sum'}).reset_index()
             df_monthly['MER Previsto'] = df_monthly['Fatturato Previsto'] / df_monthly['Spesa Totale']
-            # Calcolo CoS Mensile
             df_monthly['CoS Previsto'] = (df_monthly['Spesa Totale'] / df_monthly['Fatturato Previsto'].replace(0, np.nan)) * 100
             
             st.dataframe(df_monthly.style.format({'Spesa Totale': '€ {:,.0f}', 'Fatturato Previsto': '€ {:,.0f}', 'MER Previsto': '{:.2f}', 'CoS Previsto': '{:.1f}%'}))
@@ -469,11 +590,10 @@ if uploaded_file is not None:
             st.dataframe(df_prev[['Periodo', 'Spesa Totale', 'Fatturato Previsto', 'MER Previsto', 'CoS Previsto']].style.format({'Spesa Totale': '€ {:,.0f}', 'Fatturato Previsto': '€ {:,.0f}', 'MER Previsto': '{:.2f}', 'CoS Previsto': '{:.1f}%'}))
 
         with tabs[2]:
-            st.caption("Focus sulle performance storiche di Google Ads: Spesa vs Conversion Value.")
+            st.caption("Focus sulle performance storiche di Google Ads.")
             st.subheader("🔵 Performance Google Ads")
             if col_g_val in df.columns:
                 g_metrics = df.tail(4)[[col_google, col_g_val, 'ROAS_Google', col_g_cpc, col_g_imps]].sum()
-                avg_roas_g = g_metrics[col_g_val] / g_metrics[col_google] if g_metrics[col_google] > 0 else 0
                 st.columns(5)[0].metric("Spesa (4w)", f"€ {g_metrics[col_google]:,.0f}")
                 
                 fig_g, ax_g1 = plt.subplots(figsize=(12, 5))
@@ -481,10 +601,10 @@ if uploaded_file is not None:
                 ax_g2 = ax_g1.twinx()
                 ax_g2.plot(df['Data_Interna'], df[col_g_val], color=GREEN_COLOR, linewidth=2, label='Valore Conversione')
                 st.pyplot(fig_g)
-                st.dataframe(df[['Periodo', col_date, col_google, col_g_val, 'ROAS_Google', col_g_cpc]].iloc[::-1].style.format({col_google: '€ {:,.2f}', col_g_val: '€ {:,.2f}', 'ROAS_Google': '{:.2f}', col_g_cpc: '€ {:,.2f}'}))
+                st.dataframe(df[['Periodo', col_google, col_g_val, 'ROAS_Google', col_g_cpc]].iloc[::-1].style.format({col_google: '€ {:,.2f}', col_g_val: '€ {:,.2f}', 'ROAS_Google': '{:.2f}', col_g_cpc: '€ {:,.2f}'}))
 
         with tabs[3]:
-            st.caption("Focus sulle performance storiche di Meta Ads: Spesa vs Conversion Value.")
+            st.caption("Focus sulle performance storiche di Meta Ads.")
             st.subheader("🔵 Performance Meta Ads")
             if col_m_val in df.columns:
                 m_metrics = df.tail(4)[[col_meta, col_m_val, 'ROAS_Meta', col_m_cpc, col_m_cpm, col_m_freq]].sum()
@@ -495,15 +615,12 @@ if uploaded_file is not None:
                 ax_m2 = ax_m1.twinx()
                 ax_m2.plot(df['Data_Interna'], df[col_m_val], color=GREEN_COLOR, linewidth=2, label='Website Purch. Value')
                 st.pyplot(fig_m)
-                st.dataframe(df[['Periodo', col_date, col_meta, col_m_val, 'ROAS_Meta', col_m_cpc, col_m_cpm, col_m_freq]].iloc[::-1].style.format({col_meta: '€ {:,.2f}', col_m_val: '€ {:,.2f}', 'ROAS_Meta': '{:.2f}', col_m_cpc: '€ {:,.2f}', col_m_cpm: '€ {:,.2f}', col_m_freq: '{:.2f}'}))
+                st.dataframe(df[['Periodo', col_meta, col_m_val, 'ROAS_Meta', col_m_cpc, col_m_cpm, col_m_freq]].iloc[::-1].style.format({col_meta: '€ {:,.2f}', col_m_val: '€ {:,.2f}', 'ROAS_Meta': '{:.2f}', col_m_cpc: '€ {:,.2f}', col_m_cpm: '€ {:,.2f}', col_m_freq: '{:.2f}'}))
 
         with tabs[4]:
             st.caption("Analisi dell'elasticità: misura quanto il fatturato reagisce alle variazioni di spesa pubblicitaria.")
             st.header("🧪 Analisi Saturazione e Scalabilità")
-            st.subheader("1. Riepilogo Annuale Completo (Anno su Anno)")
-            
-            df['Year'] = df['Data_Interna'].dt.year
-            df['Week'] = df['Data_Interna'].dt.isocalendar().week
+            st.subheader("1. Riepilogo Annuale Completo")
             
             annual_agg = df.groupby('Year').agg({'Spesa_Ads_Totale': 'sum', 'Fatturato_Netto': 'sum'}).sort_index(ascending=False)
             annual_rows = []
@@ -558,7 +675,7 @@ if uploaded_file is not None:
                 st.pyplot(fig_sat)
 
         with tabs[5]:
-            st.caption("Confronto tra quanto spendi in pubblicità e la percentuale di prodotti resi. Se salgono insieme, stai acquisendo traffico di bassa qualità.")
+            st.caption("Confronto tra spesa e resi.")
             st.subheader("🔍 Spesa Ads vs Tasso Resi")
             fig2, ax1_2 = plt.subplots(figsize=(12, 6))
             ax1_2.bar(df['Data_Interna'], df['Spesa_Ads_Totale'], color=DARKEST_BLUE, alpha=0.5)
@@ -567,7 +684,7 @@ if uploaded_file is not None:
             st.pyplot(fig2)
 
         with tabs[6]:
-            st.caption("Il database grezzo importato dal CSV per verifiche puntuali.")
+            st.caption("Il database grezzo importato.")
             st.subheader("🗂️ Database Storico")
             display_cols = [col_date, 'Periodo', 'Total sales', col_google, col_g_val, col_g_cpc, col_g_imps, 
                             col_meta, col_m_val, col_m_cpc, col_m_cpm, col_m_freq, 'CoS', 'Profitto_Operativo']
@@ -576,17 +693,15 @@ if uploaded_file is not None:
 
         # --- 8. TAB AI AVANZATA ---
         with tabs[7]:
-            st.caption("Intelligence Automatica: Punteggio di salute mensile basato su Profitto, Retention, Sconti e Canali.")
+            st.caption("Analisi automatica che incrocia Profitto, Retention e Performance Canali.")
             st.header("🧠 Insight AI: Analisi Strategica Completa")
             
-            # Prepare monthly data
             df['Month_Date'] = df['Data_Interna'].dt.to_period('M')
             ai_agg = {
                 'Spesa_Ads_Totale': 'sum', 'Fatturato_Netto': 'sum', 'Orders': 'sum', 
                 col_returns: 'sum', col_discounts: 'sum', col_google: 'sum', col_meta: 'sum', 
                 col_g_val: 'sum', col_m_val: 'sum', 'Gross sales': 'sum', 'Profitto_Operativo': 'sum'
             }
-            # Add complex metrics if present
             if col_ret_rate in df.columns: ai_agg[col_ret_rate] = 'mean'
             if col_m_freq in df.columns: ai_agg[col_m_freq] = 'mean'
             if col_m_cpm in df.columns: ai_agg[col_m_cpm] = 'mean'
@@ -595,20 +710,16 @@ if uploaded_file is not None:
 
             ai_df = df.groupby('Month_Date').agg(ai_agg).sort_index(ascending=False)
             
-            # Metrics
             ai_df['MER'] = ai_df['Fatturato_Netto'] / ai_df['Spesa_Ads_Totale'].replace(0, np.nan)
             ai_df['Discount_Rate'] = (ai_df[col_discounts].abs() / ai_df['Gross sales'].replace(0, np.nan)) * 100
             ai_df['ROAS_Google'] = ai_df[col_g_val] / ai_df[col_google].replace(0, np.nan)
             ai_df['ROAS_Meta'] = ai_df[col_m_val] / ai_df[col_meta].replace(0, np.nan)
             
-            # Seasonality Index
             avg_sales = ai_df['Fatturato_Netto'].mean()
             ai_df['Seasonality'] = ai_df['Fatturato_Netto'] / avg_sales
             
-            # Benchmarks
             bench_mer = ai_df['MER'].mean()
             bench_ret = ai_df[col_ret_rate].mean() if col_ret_rate in df.columns else 0
-            bench_disc = ai_df['Discount_Rate'].mean()
             
             for m in ai_df.index[:12]:
                 row = ai_df.loc[m]
@@ -618,7 +729,6 @@ if uploaded_file is not None:
                 tags = []
                 alerts = []
                 
-                # Logic based on Break Even
                 if row['MER'] >= be_roas_val: 
                     score += 20
                     tags.append(f"Profittevole (> {be_roas_val:.2f})")
@@ -637,7 +747,6 @@ if uploaded_file is not None:
                 if row['Seasonality'] > 1.2: seas_txt = "Alta Stagionalità 🔥"
                 elif row['Seasonality'] < 0.8: seas_txt = "Bassa Stagionalità ❄️"
                 
-                # Card Render
                 color_class = "ai-score-high" if score >= 70 else "ai-score-med" if score >= 50 else "ai-score-low"
                 
                 with st.container():
